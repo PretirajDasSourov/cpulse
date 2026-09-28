@@ -1,0 +1,216 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum PlatformType {
+  CODEFORCES
+  VJUDGE
+  TOPH
+  ATCODER
+  CODECHEF
+  LEETCODE
+}
+
+enum SyncStatus {
+  IDLE
+  SYNCING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum Verdict {
+  ACCEPTED
+  WRONG_ANSWER
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  RUNTIME_ERROR
+  COMPILATION_ERROR
+  OTHER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  username     String   @unique
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  avatarUrl    String?  @map("avatar_url")
+  bio          String?  @db.Text
+  country      String?  @db.VarChar(3)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  platformAccounts PlatformAccount[]
+  submissions      Submission[]
+  dailyActivities  DailyActivity[]
+  ratings          Rating[]
+  userAchievements UserAchievement[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model Platform {
+  id         String       @id @default(uuid())
+  name       String
+  slug       PlatformType @unique
+  websiteUrl String       @map("website_url")
+  isActive   Boolean      @default(true) @map("is_active")
+
+  accounts    PlatformAccount[]
+  problems    Problem[]
+  submissions Submission[]
+  ratings     Rating[]
+
+  @@map("platforms")
+}
+
+model PlatformAccount {
+  id             String     @id @default(uuid())
+  userId         String     @map("user_id")
+  platformId     String     @map("platform_id")
+  username       String
+  externalUserId String?    @map("external_user_id")
+  rating         Int?
+  highestRating  Int?       @map("highest_rating")
+  rankTitle      String?    @map("rank_title")
+  connectedAt    DateTime   @default(now()) @map("connected_at")
+  lastSyncedAt   DateTime?  @map("last_synced_at")
+  syncStatus     SyncStatus @default(IDLE) @map("sync_status")
+  syncError      String?    @map("sync_error") @db.Text
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platformId])
+  @@unique([platformId, username])
+  @@index([userId])
+  @@map("platform_accounts")
+}
+
+model Problem {
+  id          String   @id @default(uuid())
+  platformId  String   @map("platform_id")
+  externalId  String   @map("external_id")
+  name        String
+  url         String
+  rating      Int?
+  difficulty  String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  platform    Platform     @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  tags        ProblemTag[]
+  submissions Submission[]
+
+  @@unique([platformId, externalId])
+  @@map("problems")
+}
+
+model ProblemTag {
+  id        String  @id @default(uuid())
+  problemId String  @map("problem_id")
+  tag       String
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([problemId, tag])
+  @@map("problem_tags")
+}
+
+model Submission {
+  id                   String   @id @default(uuid())
+  userId               String   @map("user_id")
+  platformId           String   @map("platform_id")
+  problemId            String   @map("problem_id")
+  externalSubmissionId String?  @map("external_submission_id")
+  verdict              Verdict
+  language             String
+  submittedAt          DateTime @map("submitted_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  problem  Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([platformId, externalSubmissionId])
+  @@index([userId, submittedAt])
+  @@map("submissions")
+}
+
+model Rating {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  platformId   String   @map("platform_id")
+  rating       Int
+  ratingChange Int?     @map("rating_change")
+  contestName  String?  @map("contest_name")
+  recordedAt   DateTime @map("recorded_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@map("ratings")
+}
+
+model DailyActivity {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  date             DateTime @db.Date
+  totalSolved      Int      @default(0) @map("total_solved")
+  codeforcesSolved Int      @default(0) @map("codeforces_solved")
+  vjudgeSolved     Int      @default(0) @map("vjudge_solved")
+  tophSolved       Int      @default(0) @map("toph_solved")
+  atcoderSolved    Int      @default(0) @map("atcoder_solved")
+  codechefSolved   Int      @default(0) @map("codechef_solved")
+  leetcodeSolved   Int      @default(0) @map("leetcode_solved")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("daily_activity")
+}
+
+model Achievement {
+  id               String            @id @default(uuid())
+  name             String            @unique
+  description      String
+  icon             String
+  requirementType  String            @map("requirement_type")
+  requirementValue Int               @map("requirement_value")
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  achievementId String   @map("achievement_id")
+  unlockedAt    DateTime @default(now()) @map("unlocked_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}\n
